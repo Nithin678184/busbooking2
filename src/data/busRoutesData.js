@@ -1,0 +1,256 @@
+export const malenaduFleetCategories = [
+  { 
+    id: "volvo", 
+    name: "Malenadu Volvo Multi-Axle (Sleeper AC)", 
+    shortName: "Volvo Multi-Axle", 
+    logo: "👑", 
+    isAc: true, 
+    isSleeper: true, 
+    isEv: false,
+    busType: "Sleeper AC" 
+  },
+  { 
+    id: "airavat", 
+    name: "Malenadu Airavat (Semi Sleeper AC)", 
+    shortName: "Airavat Semi Sleeper", 
+    logo: "🛋️", 
+    isAc: true, 
+    isSleeper: false, 
+    isEv: false,
+    busType: "Semi Sleeper AC" 
+  },
+  { 
+    id: "rajahamsa", 
+    name: "Malenadu Rajahamsa (Semi Sleeper Non AC)", 
+    shortName: "Rajahamsa Semi Sleeper", 
+    logo: "🚌", 
+    isAc: false, 
+    isSleeper: false, 
+    isEv: false,
+    busType: "Semi Sleeper Non AC" 
+  },
+  { 
+    id: "nightqueen", 
+    name: "Malenadu Night Queen (Sleeper Non AC)", 
+    shortName: "Night Queen Sleeper", 
+    logo: "🛏️", 
+    isAc: false, 
+    isSleeper: true, 
+    isEv: false,
+    busType: "Sleeper Non AC" 
+  },
+  { 
+    id: "sarige", 
+    name: "Malenadu Sarige (Normal Seating Bus)", 
+    shortName: "Malenadu Sarige", 
+    logo: "🚍", 
+    isAc: false, 
+    isSleeper: false, 
+    isEv: false,
+    busType: "Normal Seating Bus" 
+  }
+];
+
+// Formats YYYY-MM-DD or date string to clear passenger display format (e.g. "Sun, 23 Aug 2026")
+export function formatJourneyDate(dateStr) {
+  if (!dateStr) {
+    const today = new Date();
+    return today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  try {
+    const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
+// Dynamically calculates the exact real-time duration between departure time and arrival time
+export function calculateDuration(depTime, arrTime) {
+  if (!depTime || !arrTime) return '8h 00m';
+
+  const parseTime = (str) => {
+    if (!str) return null;
+    const parts = str.trim().split(':');
+    if (parts.length < 2) return null;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const depMins = parseTime(depTime);
+  const arrMins = parseTime(arrTime);
+
+  if (depMins === null || arrMins === null) return '8h 00m';
+
+  let diff = arrMins - depMins;
+  if (diff <= 0) {
+    diff += 24 * 60; // Overnight journey crossed midnight
+  }
+
+  const hours = Math.floor(diff / 60);
+  const mins = diff % 60;
+
+  return `${hours}h ${mins < 10 ? '0' : ''}${mins}m`;
+}
+
+// Helper to determine if a bus is a full berth sleeper (Volvo Sleeper / Night Queen) vs 46-Seat Seater (Sarige / Airavat / Rajahamsa)
+export function checkIsSleeperBus(bus) {
+  if (!bus) return false;
+  const bType = (bus.busType || bus.operatorName || '').toLowerCase();
+
+  // Semi Sleeper, Sarige, Airavat, and Rajahamsa are 46-Seat Seater / Semi-Sleeper buses
+  if (bType.includes('semi') || bType.includes('sarige') || bType.includes('airavat') || bType.includes('rajahamsa')) {
+    return false;
+  }
+
+  if (bType.includes('volvo') || bType.includes('night queen') || (bType.includes('sleeper') && !bType.includes('semi'))) {
+    return true;
+  }
+
+  return Boolean(bus.isSleeper && !bType.includes('semi'));
+}
+
+// Returns ONLY Malenadu Travels Admin-added fleet buses strictly matching departure, destination AND exact travel date
+export function getBusesForRoute(fromLoc, toLoc, journeyDate, customAdminBuses = []) {
+  if (!customAdminBuses || customAdminBuses.length === 0) {
+    return [];
+  }
+
+  if (!fromLoc || !toLoc) {
+    return [];
+  }
+
+  const fromName = (fromLoc.name || '').toLowerCase().trim();
+  const fromDistrict = (fromLoc.district || '').toLowerCase().trim();
+  const fromTaluk = (fromLoc.taluk || '').toLowerCase().trim();
+
+  const toName = (toLoc.name || '').toLowerCase().trim();
+  const toDistrict = (toLoc.district || '').toLowerCase().trim();
+  const toTaluk = (toLoc.taluk || '').toLowerCase().trim();
+
+  const targetDateStr = (journeyDate || '').trim();
+
+  // Filter Malenadu buses matching departure, destination route AND exact journey date
+  const exactMatches = customAdminBuses.filter(bus => {
+    const busFrom = (bus.fromCity || '').toLowerCase().trim();
+    const busTo = (bus.toCity || '').toLowerCase().trim();
+
+    // Check if departure city matches place name, taluk, or district
+    const matchesFrom = (fromName && (busFrom.includes(fromName) || fromName.includes(busFrom))) ||
+                        (fromTaluk && (busFrom.includes(fromTaluk) || fromTaluk.includes(busFrom))) ||
+                        (fromDistrict && busFrom.includes(fromDistrict));
+
+    // Check if destination city matches place name, taluk, or district
+    const matchesTo = (toName && (busTo.includes(toName) || toName.includes(busTo))) ||
+                      (toTaluk && (busTo.includes(toTaluk) || toTaluk.includes(busTo))) ||
+                      (toDistrict && busTo.includes(toDistrict));
+
+    if (!matchesFrom || !matchesTo) return false;
+
+    // STRICT TRAVEL DATE FILTER:
+    if (targetDateStr) {
+      const busDateStr = String(bus.travelDate || '2026-08-22').trim();
+      return busDateStr === targetDateStr;
+    }
+
+    return true;
+  });
+
+  return exactMatches;
+}
+
+// Single Authoritative Calculator for Bus Seat Details & Available Count
+export function calculateBusSeatDetails(bus, userBookings = []) {
+  if (!bus) {
+    return {
+      type: 'seater',
+      totalSeats: 46,
+      bookedSeatIds: [],
+      availableCount: 38
+    };
+  }
+
+  const isSleeper = checkIsSleeperBus(bus);
+
+  // Extract booked seat IDs for THIS specific bus strictly matching ID or Bus Registration Number
+  const bookedSeatIds = [];
+  if (userBookings && Array.isArray(userBookings)) {
+    userBookings.forEach(b => {
+      const matchId = b.busId && bus.id && String(b.busId) === String(bus.id);
+      const matchNo = b.busNo && bus.busNumber && String(b.busNo).trim().toLowerCase() === String(bus.busNumber).trim().toLowerCase();
+      const isActive = b.status !== 'Cancelled' && b.status !== 'Cancelled by Admin';
+      
+      if ((matchId || matchNo) && isActive && Array.isArray(b.seats)) {
+        b.seats.forEach(s => {
+          const val = typeof s === 'object' ? (s.id || s.label || s.number || s.seatNo) : s;
+          if (val !== undefined && val !== null) {
+            bookedSeatIds.push(String(val));
+          }
+        });
+      }
+    });
+  }
+
+  if (isSleeper) {
+    const demoBookedLower = ['1', '2', '3', '4', '5', '6', '9', '16'];
+    const demoBookedUpper = ['32'];
+
+    const lowerBerths = [
+      '1', '2', '6', '5', '7', '8', '12', '11', '13', '14',
+      '3', '4', '9', '10', '15', '16'
+    ].map(id => ({
+      id,
+      isBooked: bookedSeatIds.includes(id) || demoBookedLower.includes(id)
+    }));
+
+    const upperBerths = [
+      '17', '18', '22', '21', '23', '24', '28', '27', '29', '30',
+      '19', '20', '25', '26', '31', '32'
+    ].map(id => ({
+      id,
+      isBooked: bookedSeatIds.includes(id) || demoBookedUpper.includes(id)
+    }));
+
+    const lowerAvailable = lowerBerths.filter(b => !b.isBooked).length;
+    const upperAvailable = upperBerths.filter(b => !b.isBooked).length;
+    const totalAvailable = lowerAvailable + upperAvailable;
+
+    return {
+      type: 'sleeper',
+      totalSeats: 32,
+      bookedSeatIds,
+      lowerBerths,
+      upperBerths,
+      lowerAvailable,
+      upperAvailable,
+      availableCount: totalAvailable
+    };
+  } else {
+    // 46-Seat Seater layout (Sarige, Airavat, Rajahamsa)
+    const seats = [];
+    for (let i = 1; i <= 46; i++) {
+      const id = String(i);
+      const isDemoBooked = (i % 9 === 0 || i % 11 === 0);
+      const isBooked = bookedSeatIds.includes(id) || isDemoBooked;
+      seats.push({ id, isBooked });
+    }
+
+    const availableCount = seats.filter(s => !s.isBooked).length;
+    return {
+      type: 'seater',
+      totalSeats: 46,
+      bookedSeatIds,
+      seats,
+      availableCount
+    };
+  }
+}
+
+// Legacy export alias for backward compatibility
+export function getAvailableSeatsForBus(bus, userBookings = []) {
+  const details = calculateBusSeatDetails(bus, userBookings);
+  return details.availableCount;
+}
