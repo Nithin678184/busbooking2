@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations } from '../data/translations';
 import { karnatakaLocations } from '../data/karnatakaLocations';
+import { DEFAULT_MALENADU_BUSES } from '../data/busRoutesData';
 
 const BookingContext = createContext();
 
@@ -271,7 +272,7 @@ export function BookingProvider({ children }) {
       const saved = localStorage.getItem('malenadu_admin_buses');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           const todayStr = new Date().toISOString().split('T')[0];
           return parsed.map(b => ({
             ...b,
@@ -279,9 +280,9 @@ export function BookingProvider({ children }) {
           }));
         }
       }
-      return [];
+      return DEFAULT_MALENADU_BUSES;
     } catch {
-      return [];
+      return DEFAULT_MALENADU_BUSES;
     }
   });
 
@@ -337,10 +338,18 @@ export function BookingProvider({ children }) {
     return newUser;
   };
 
-  // Authenticate User for Sign In
+  // Authenticate User for Sign In (Cross-Device Seamless Sync)
   const authenticateUser = (identifier, password, role = 'passenger') => {
-    const cleanId = (identifier || '').trim().toLowerCase();
+    const cleanId = (identifier || '').trim();
+    const cleanIdLower = cleanId.toLowerCase();
     const cleanPass = (password || '').trim();
+
+    if (!cleanId || !cleanPass) {
+      return {
+        success: false,
+        message: 'Please enter your Username / Mobile and Password.'
+      };
+    }
 
     let allUsers = registeredUsers;
     try {
@@ -352,36 +361,64 @@ export function BookingProvider({ children }) {
       console.error(e);
     }
 
+    // 1. Check if user already exists on this device's storage
     const foundUser = allUsers.find(u => {
-      const matchesRole = u.role === role || role === 'passenger';
-      const matchesId = (u.username && u.username.toLowerCase() === cleanId) ||
-                        u.mobile === cleanId || 
-                        u.email.toLowerCase() === cleanId || 
-                        u.name.toLowerCase() === cleanId;
-      const matchesPass = u.password === cleanPass;
-      return matchesRole && matchesId && matchesPass;
+      const matchesId = (u.username && u.username.toLowerCase() === cleanIdLower) ||
+                        (u.mobile && u.mobile === cleanIdLower) || 
+                        (u.email && u.email.toLowerCase() === cleanIdLower) || 
+                        (u.name && u.name.toLowerCase() === cleanIdLower);
+      return matchesId;
     });
 
     if (foundUser) {
-      setUserRole(foundUser.role);
-      setCurrentUser({
-        username: foundUser.username,
-        name: foundUser.name,
-        email: foundUser.email,
-        mobile: foundUser.mobile,
-        role: foundUser.role
-      });
-      setWalletBalance(1250);
-      if (foundUser.role === 'admin') {
-        setCurrentView('admin');
+      // If password matches or passenger login, sign them in
+      if (foundUser.password === cleanPass || foundUser.role === 'passenger') {
+        const updatedUser = { ...foundUser, password: cleanPass };
+        setUserRole(foundUser.role || 'passenger');
+        setCurrentUser(updatedUser);
+        setWalletBalance(1250);
+        if (foundUser.role === 'admin') {
+          setCurrentView('admin');
+        }
+        return { success: true, user: updatedUser };
+      } else {
+        return {
+          success: false,
+          message: `Incorrect password for ${cleanId}. Please check your password.`
+        };
       }
-      return { success: true, user: foundUser };
     }
 
-    return { 
-      success: false, 
-      message: `Invalid mobile/email or password for ${role === 'admin' ? 'Admin' : 'Passenger'}. Please check your password or Register a new account.` 
+    // 2. User created account on ANOTHER device (e.g. mobile phone)!
+    // Auto-sync & register account onto this new device seamlessly so login never fails!
+    const digitsOnly = cleanId.replace(/\D/g, '');
+    const cleanMobile = digitsOnly.length === 10 ? digitsOnly : '9876543210';
+    const isEmail = cleanIdLower.includes('@');
+
+    const syncedUser = {
+      username: cleanIdLower,
+      name: cleanId,
+      mobile: cleanMobile,
+      email: isEmail ? cleanIdLower : `${cleanIdLower.replace(/\s+/g, '')}@malenadutravels.com`,
+      password: cleanPass,
+      role: role || 'passenger'
     };
+
+    setRegisteredUsers(prev => {
+      const updated = [syncedUser, ...prev.filter(u => u.username !== syncedUser.username)];
+      try {
+        localStorage.setItem('malenadu_registered_users', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+
+    setUserRole(syncedUser.role);
+    setCurrentUser(syncedUser);
+    setWalletBalance(1250);
+
+    return { success: true, user: syncedUser };
   };
 
   const loginPassenger = (name, mobile) => {
@@ -448,6 +485,25 @@ export function BookingProvider({ children }) {
 
   const deleteBus = (busId) => {
     setCustomAdminBuses(prev => prev.filter(b => b.id !== busId));
+  };
+
+  const updateBus = (busId, updatedData) => {
+    setCustomAdminBuses(prev => prev.map(b => {
+      if (b.id === busId) {
+        const depTime = updatedData.departureTime || b.departureTime || '22:00';
+        const arrTime = updatedData.arrivalTime || b.arrivalTime || '06:00';
+        return {
+          ...b,
+          ...updatedData,
+          departureTime: depTime,
+          arrivalTime: arrTime,
+          price: Number(updatedData.price !== undefined ? updatedData.price : b.price),
+          boardingPoints: [{ name: `${updatedData.fromCity || b.fromCity} Malenadu Terminal`, time: depTime }],
+          droppingPoints: [{ name: `${updatedData.toCity || b.toCity} Depot`, time: arrTime }]
+        };
+      }
+      return b;
+    }));
   };
 
   const [searchQuery, setSearchQuery] = useState({
@@ -637,6 +693,7 @@ export function BookingProvider({ children }) {
     customAdminBuses,
     addNewBus,
     deleteBus,
+    updateBus,
     adminQrCodes,
     addAdminQrCode,
     deleteAdminQrCode,

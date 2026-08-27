@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useBooking } from '../context/BookingContext';
 import TicketApprovalTimer from './TicketApprovalTimer';
 import { 
-  ShieldCheck, Plus, Trash2, Bus, QrCode, Upload, Check, Copy, Sparkles, CheckCircle2, Clock, AlertCircle, Eye, Ticket, XCircle, Zap, Lock, Calendar, MessageSquare, Bot, Send
+  ShieldCheck, Plus, Trash2, Bus, QrCode, Upload, Check, Copy, Sparkles, CheckCircle2, Clock, AlertCircle, Eye, Ticket, XCircle, Zap, Lock, Calendar, MessageSquare, Bot, Send, Pencil
 } from 'lucide-react';
 import { karnatakaLocations } from '../data/karnatakaLocations';
 import { malenaduFleetCategories, formatJourneyDate, calculateDuration } from '../data/busRoutesData';
@@ -130,7 +130,7 @@ export function parseBulkBusPrompt(promptText) {
 
 export default function AdminDashboard() {
   const { 
-    customAdminBuses, addNewBus, deleteBus, adminQrCodes, updatePersonalQrCode, 
+    customAdminBuses, addNewBus, deleteBus, updateBus, adminQrCodes, updatePersonalQrCode, 
     userBookings, approveTicket, rejectTicket, deleteTicket, deleteMultipleTickets, 
     userRole, loginAdmin, setCurrentView 
   } = useBooking();
@@ -138,6 +138,48 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('buses'); // 'buses' | 'ai-assistant' | 'approvals' | 'qrcodes'
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedId, setCopiedId] = useState('');
+
+  // Editing Bus Modal State
+  const [editingBus, setEditingBus] = useState(null);
+  const [editForm, setEditForm] = useState({
+    operatorName: 'Semi Sleeper AC',
+    operatorLogo: '🛋️',
+    busNumber: '',
+    busType: 'Semi Sleeper AC',
+    category: 'Malenadu Express',
+    fromCity: 'Bengaluru',
+    toCity: 'Shivamogga',
+    travelDate: new Date().toISOString().split('T')[0],
+    departureTime: '21:30',
+    arrivalTime: '05:30',
+    price: 850
+  });
+
+  const handleOpenEdit = (bus) => {
+    setEditingBus(bus);
+    setEditForm({
+      operatorName: bus.operatorName || 'Semi Sleeper AC',
+      operatorLogo: bus.operatorLogo || '🛋️',
+      busNumber: bus.busNumber || '',
+      busType: bus.busType || 'Semi Sleeper AC',
+      category: bus.category || 'Malenadu Express',
+      fromCity: bus.fromCity || 'Bengaluru',
+      toCity: bus.toCity || 'Shivamogga',
+      travelDate: bus.travelDate || new Date().toISOString().split('T')[0],
+      departureTime: bus.departureTime || '21:30',
+      arrivalTime: bus.arrivalTime || '05:30',
+      price: bus.price || 850
+    });
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editingBus) return;
+    updateBus(editingBus.id, editForm);
+    setSuccessMsg(`Bus ${editForm.busNumber} details updated successfully!`);
+    setEditingBus(null);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
 
   // Ticket Approval Filter & Bulk Actions State
   const [ticketFilterType, setTicketFilterType] = useState('all'); // 'all' | 'pending' | 'approved' | 'cancelled'
@@ -653,19 +695,187 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => deleteBus(bus.id)}
-                      className="p-3 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-200 transition-colors"
-                      title="Delete Bus Service"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        onClick={() => handleOpenEdit(bus)}
+                        className="p-3 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-all cursor-pointer flex items-center gap-1.5 font-black text-xs shadow-sm"
+                        title="Edit Bus Details"
+                      >
+                        <Pencil className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span className="hidden sm:inline">Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => deleteBus(bus.id)}
+                        className="p-3 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-200 transition-colors cursor-pointer"
+                        title="Delete Bus Service"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* EDIT BUS MODAL */}
+      {editingBus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border-2 border-amber-400 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5 relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+              <div className="flex items-center space-x-2">
+                <Pencil className="w-5 h-5 text-amber-500" />
+                <h3 className="font-black text-lg text-slate-900 dark:text-white">Edit Bus Service Details</h3>
+              </div>
+              <button
+                onClick={() => setEditingBus(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              {/* FLEET SERVICE NAME */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase mb-1">Fleet Service Name</label>
+                <select
+                  value={editForm.operatorName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const catObj = malenaduFleetCategories.find(c => c.name === val);
+                    if (catObj) {
+                      setEditForm({
+                        ...editForm,
+                        operatorName: catObj.name,
+                        operatorLogo: catObj.logo,
+                        busType: catObj.busType
+                      });
+                    } else {
+                      setEditForm({ ...editForm, operatorName: val });
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-2xl border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-black text-slate-900 dark:text-white focus:border-amber-500 outline-none"
+                >
+                  {malenaduFleetCategories.map(cat => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.logo} {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* BUS REGISTRATION NUMBER */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase mb-1">Bus Number (Registration)</label>
+                <input
+                  type="text"
+                  value={editForm.busNumber}
+                  onChange={(e) => setEditForm({ ...editForm, busNumber: e.target.value })}
+                  placeholder="KA-14-MN-9999"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  required
+                />
+              </div>
+
+              {/* ROUTE: FROM & TO */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase mb-1">From City</label>
+                  <select
+                    value={editForm.fromCity}
+                    onChange={(e) => setEditForm({ ...editForm, fromCity: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    {karnatakaLocations.map(loc => (
+                      <option key={loc.id} value={loc.name}>{loc.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase mb-1">To City</label>
+                  <select
+                    value={editForm.toCity}
+                    onChange={(e) => setEditForm({ ...editForm, toCity: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    {karnatakaLocations.map(loc => (
+                      <option key={loc.id} value={loc.name}>{loc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* TRAVEL DATE */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase mb-1">Travel Date</label>
+                <input
+                  type="date"
+                  value={editForm.travelDate}
+                  onChange={(e) => setEditForm({ ...editForm, travelDate: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  required
+                />
+              </div>
+
+              {/* PRICE / DEPARTURE TIME / ARRIVAL TIME */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase mb-1">Ticket Price (₹)</label>
+                  <input
+                    type="number"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase mb-1">Departure</label>
+                  <input
+                    type="text"
+                    value={editForm.departureTime}
+                    onChange={(e) => setEditForm({ ...editForm, departureTime: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">Arrival</label>
+                  <input
+                    type="text"
+                    value={editForm.arrivalTime}
+                    onChange={(e) => setEditForm({ ...editForm, arrivalTime: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingBus(null)}
+                  className="w-1/2 py-3.5 rounded-2xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-black hover:bg-slate-300 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-400/20 transition-all cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
